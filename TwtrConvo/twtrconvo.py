@@ -17,7 +17,7 @@ from textblob import TextBlob
 from nltk.corpus import stopwords
 # local imports
 from .tweets import get_tweets, get_replies
-from .plots import create_pie_chart, create_sentiment_gauge
+from .plots import create_pie_chart, create_sentiment_gauge, create_boxplot
 
 
 def convert_tweets_to_df(tweet_list):
@@ -40,8 +40,8 @@ def convert_tweets_to_df(tweet_list):
         df.loc[index, columns] = [
             tweet['id'],
             tweet['user']['screen_name'],
-            tweet['text'],
-            clean_tweet(tweet['text']),
+            tweet['full_text'],
+            clean_tweet(tweet['full_text']),
             tweet['favorite_count'],
             tweet['retweet_count'],
             tweet['user']['followers_count'],
@@ -50,6 +50,8 @@ def convert_tweets_to_df(tweet_list):
         index += 1
     # Create column for net influence
     df['net_influence'] = df['followers'] - df['following']
+    # Filter invalid tweets
+    df = df.loc[~df['text'].isnull()].reset_index()
 
     return df
 
@@ -65,7 +67,7 @@ def clean_tweet(tweet):
         Returns:
             cleaned text
     """
-    regx = re.compile("(@[A-Za-z0-9]+)|([^0-9A-Za-z \t])|(\w+:\/\/\S+)")
+    regx = re.compile("(@[A-Za-z0-9]+)|([^0-9A-Za-z \t'])|(\w+:\/\/\S+)")
     return ' '.join(re.sub(regx, " ", tweet).split()) 
 
 
@@ -152,6 +154,8 @@ def build_dataset(ticker, save=False):
 def load_dataset(data_path):
     """
         This method will load a previously built dataset.
+        TODO: Figure out why empty strings are being saved,
+              for now just use na_filter=False
 
         Args:
             data_path (str): path to dataset
@@ -160,8 +164,10 @@ def load_dataset(data_path):
             tweet and reply DataFrames
     """
     # Load tweets
-    tweet_df = pd.read_csv(os.path.join(data_path, 'tweets.csv'))
-    reply_df = pd.read_csv(os.path.join(data_path, 'replies.csv'))
+    tweet_df = pd.read_csv(os.path.join(data_path, 'tweets.csv'),
+                           na_filter=False)
+    reply_df = pd.read_csv(os.path.join(data_path, 'replies.csv'),
+                           na_filter=False)
 
     return tweet_df, reply_df
 
@@ -274,6 +280,7 @@ def main(ticker, build):
     figures = {}
     figures['pie_chart'] = create_pie_chart(tweet_word_count, reply_word_count)
     figures['sentiment_guage'] = create_sentiment_gauge(tweet_blob)
+    figures['boxplots'] = create_boxplot(tweet_df)
     # -- Save figures as html files --
     save_figures(html_path, figures)
 

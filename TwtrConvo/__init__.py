@@ -1,7 +1,7 @@
 import os
 from . import twtrconvo, tweets, plots
 
-__version__ = '0.0.1'
+__version__ = '0.0.2'
 __license__ = 'MIT'
 __author__ = 'Lee Alessandrini'
 

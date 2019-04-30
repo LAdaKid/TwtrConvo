@@ -4,6 +4,7 @@ This module will create the different plotly objects.
 
 import os
 import numpy as np
+import plotly.graph_objs as go
 
 
 def create_pie_chart(tweet_word_count, reply_word_count, n=10):
@@ -206,5 +207,64 @@ def create_sentiment_gauge(blob):
 
     fig = {"data": [base_chart, meter_chart],
            "layout": layout}
+
+    return fig
+
+
+def create_boxplot(tweet_df):
+    """
+        This method will create boxplots for retweets and favorites.
+
+        Args:
+            tweet_df (pandas.DataFrame): top tweets
+
+        Returns:
+            figure dict object formatted for plotly
+    """
+    # Setup values boxplots will be created for
+    columns = {
+        'favorites': 'rgba(93, 164, 214, 0.5)',  # Blue
+        'retweets': 'rgba(255, 65, 54, 0.5)'  # Orange
+    }
+    # Build trace objects
+    traces = []
+    for key, value in columns.items():
+        traces.append(go.Box(
+            y=tweet_df[key].values,
+            name=key,
+            boxpoints='all',
+            jitter=0.5,
+            whiskerwidth=0.2,
+            fillcolor=value,
+            marker=dict(
+                size=2,
+            ),
+            line=dict(width=1),
+        ))
+    # Build layout
+    layout = go.Layout(
+        title='Retweets and Favorites',
+        yaxis=dict(
+            autorange=True,
+            showgrid=True,
+            zeroline=True,
+            dtick=5,
+            gridcolor='rgb(255, 255, 255)',
+            gridwidth=1,
+            zerolinecolor='rgb(255, 255, 255)',
+            zerolinewidth=2,
+        ),
+        margin=dict(
+            l=40,
+            r=30,
+            b=80,
+            t=100,
+        ),
+        paper_bgcolor='rgb(243, 243, 243)',
+        plot_bgcolor='rgb(243, 243, 243)',
+        showlegend=False
+    )
+
+    fig = {'data': traces, 'layout': layout}
 
     return fig

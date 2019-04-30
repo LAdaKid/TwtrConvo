@@ -35,7 +35,8 @@ def filter_tweets(tweet_list, filter_retweets=True, filter_replies=True):
         # Add retweet filter condition if selected
         if filter_retweets:
             conditions.append(
-                (not t['retweeted']) and (not t['text'][0:2] == 'RT'))
+                (not t['retweeted']) and
+                (t['full_text'][0:2] != 'RT'))
         # Add reply filter condition if selected
         if filter_replies:
             conditions.append(
@@ -65,7 +66,10 @@ def get_tweets(ticker, max_tweets=500):
     # Get tweets
     tweets = [
         status for status in
-        tweepy.Cursor(tweepy_api.search, q=ticker).items(max_tweets)
+        tweepy.Cursor(
+            tweepy_api.search,
+            q=ticker,
+            tweet_mode='extended').items(max_tweets)
     ]
     # Convert tweets to json format
     tweets = _convert_to_json(tweets)
@@ -87,7 +91,9 @@ def get_replies(tweet_id, username):
             list of replies to original tweet
     """
 
-    tweets = tweepy_api.search(q='@{}'.format(username), since_id=tweet_id)
+    tweets = tweepy_api.search(
+        q='@{}'.format(username), since_id=tweet_id,
+        tweet_mode='extended')
     # Convert tweets to json format
     tweets = _convert_to_json(tweets)
     # Filter out retweets and replies

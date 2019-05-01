@@ -17,7 +17,10 @@ from textblob import TextBlob
 from nltk.corpus import stopwords
 # local imports
 from .tweets import get_tweets, get_replies
-from .plots import create_pie_chart, create_sentiment_gauge, create_boxplot
+from .plots import (
+    create_pie_chart, create_sentiment_gauge, create_boxplot,
+    create_distplot
+)
 
 
 def convert_tweets_to_df(tweet_list):
@@ -67,7 +70,7 @@ def clean_tweet(tweet):
         Returns:
             cleaned text
     """
-    regx = re.compile("(@[A-Za-z0-9]+)|([^0-9A-Za-z \t'])|(\w+:\/\/\S+)")
+    regx = re.compile("(@[A-Za-z0-9]+)|([^0-9A-Za-z \t])|(\w+:\/\/\S+)")
     return ' '.join(re.sub(regx, " ", tweet).split()) 
 
 
@@ -190,6 +193,7 @@ def get_blob(ticker, tweet_df):
     filtered_words = [
         word for word in blob.words
         if (word not in stopwords.words('english')) and
+        (not word.isnumeric()) and
         (word != ticker.lower())]
     # Create new blob without stop words
     blob = TextBlob(' '.join(filtered_words))
@@ -281,6 +285,7 @@ def main(ticker, build):
     figures['pie_chart'] = create_pie_chart(tweet_word_count, reply_word_count)
     figures['sentiment_guage'] = create_sentiment_gauge(tweet_blob)
     figures['boxplots'] = create_boxplot(tweet_df)
+    figures['distplot'] = create_distplot(tweet_df)
     # -- Save figures as html files --
     save_figures(html_path, figures)
 

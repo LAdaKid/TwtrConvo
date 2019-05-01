@@ -5,6 +5,7 @@ This module will create the different plotly objects.
 import os
 import numpy as np
 import plotly.graph_objs as go
+import plotly.figure_factory as ff
 
 
 def create_pie_chart(tweet_word_count, reply_word_count, n=10):
@@ -223,14 +224,14 @@ def create_boxplot(tweet_df):
     """
     # Setup values boxplots will be created for
     columns = {
-        'favorites': 'rgba(93, 164, 214, 0.5)',  # Blue
-        'retweets': 'rgba(255, 65, 54, 0.5)'  # Orange
+        'retweets': 'rgba(255, 65, 54, 0.5)',  # Orange
+        'favorites': 'rgba(93, 164, 214, 0.5)'  # Blue
     }
     # Build trace objects
     traces = []
     for key, value in columns.items():
         traces.append(go.Box(
-            y=tweet_df[key].values,
+            x=tweet_df[key].values,
             name=key,
             boxpoints='all',
             jitter=0.5,
@@ -238,33 +239,35 @@ def create_boxplot(tweet_df):
             fillcolor=value,
             marker=dict(
                 size=2,
+                color=value
             ),
             line=dict(width=1),
         ))
     # Build layout
-    layout = go.Layout(
-        title='Retweets and Favorites',
-        yaxis=dict(
-            autorange=True,
-            showgrid=True,
-            zeroline=True,
-            dtick=5,
-            gridcolor='rgb(255, 255, 255)',
-            gridwidth=1,
-            zerolinecolor='rgb(255, 255, 255)',
-            zerolinewidth=2,
-        ),
-        margin=dict(
-            l=40,
-            r=30,
-            b=80,
-            t=100,
-        ),
-        paper_bgcolor='rgb(243, 243, 243)',
-        plot_bgcolor='rgb(243, 243, 243)',
-        showlegend=False
-    )
+    layout = go.Layout(title='Retweets and Favorites')
 
     fig = {'data': traces, 'layout': layout}
+
+    return fig
+
+
+def create_distplot(tweet_df, headers=['net_influence'],
+                    bin_sizes = [0.0, 500.0, 1000.0, 5000.0]):
+    """
+        This method will create a distribution plot given tweets and desired
+        list of headers.
+
+        Args:
+            tweet_df (pandas.DataFrame): top tweets
+            headers (list): list of DataFrame headers for plotting dist
+            bin_sizes (list): bin sizes for distribution histogram
+
+        Returns:
+            figure dict object formatted for plotly
+    """
+    # Create list of histogram data arrays
+    hist_data = [tweet_df[header].values for header in headers]
+    # Create figure
+    fig = ff.create_distplot(hist_data, headers, bin_size=bin_sizes)
 
     return fig

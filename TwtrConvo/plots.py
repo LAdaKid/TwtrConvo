@@ -67,6 +67,24 @@ def create_pie_chart(tweet_word_count, reply_word_count, n=10):
     return fig
 
 
+def _rotate_point(point, angle, center_point=(0, 0)):
+    """Rotates a point around center_point(origin by default)
+    Angle is in degrees.
+    Rotation is counter-clockwise
+    """
+    angle_rad = np.radians(angle % 360)
+    # Shift the point so that center_point becomes the origin
+    new_point = (point[0] - center_point[0], point[1] - center_point[1])
+    new_point = (
+        new_point[0] * np.cos(angle_rad) - new_point[1] * np.sin(angle_rad),
+        new_point[0] * np.sin(angle_rad) + new_point[1] * np.cos(angle_rad))
+    # Reverse the shifting we have done
+    new_point = (
+        new_point[0] + center_point[0], new_point[1] + center_point[1])
+
+    return new_point
+
+
 def create_sentiment_gauge(blob):
     """
         This method will create a plotly formatted dict which will be displayed
@@ -80,134 +98,131 @@ def create_sentiment_gauge(blob):
         Returns:
             figure dict object formatted for plotly
     """
-    # --- Create Gauge Chart ---
     polarity = blob.sentiment.polarity
-
-    base_chart = {
-        "values": [40, 20, 20, 20],
-        "labels": ["-", "-1", "0", "1"],
-        "domain": {"x": [0, .48]},
-        "marker": {
-            "colors": [
-                'rgb(255, 255, 255)',
-                'rgb(255, 255, 255)',
-                'rgb(255, 255, 255)',
-                'rgb(255, 255, 255)'
-            ],
-            "line": {
-                "width": 1
-            }
-        },
-        "name": "Gauge",
-        "hole": .4,
-        "type": "pie",
-        "direction": "clockwise",
-        "rotation": 108,
-        "showlegend": False,
-        "hoverinfo": "none",
-        "textinfo": "label",
-        "textposition": "outside"
-    }
-
-    pos_fraction = 50 / 3
-
-    meter_chart = {
-        "values": [50, pos_fraction, pos_fraction, pos_fraction],
-        "labels": ["Polarity", "Negative", "Neutral", "Positive"],
-        "marker": {
+    subjectivity = blob.sentiment.subjectivity
+    # --- Initialize Gauge Chart Metrics ---
+    guage_data = {
+        'polarity': {
+            'value': polarity,
+            'x': [0.0, .48],
+            'guage_labels': ["-", "-1", "0", "1"],
+            'angle':  -80.0 * polarity,
+            'color_labels': ['Polarity', 'Negative', 'Neutral', 'Positive'],
             'colors': [
-                'rgb(255, 255, 255)',
+                'rgb(255, 255, 255)', # Black
                 'rgb(255, 102, 102)', # Light Red
                 'rgb(192, 192, 192)', # Grey
                 'rgb(178, 255, 102)' # Light Green
             ]
         },
-        "domain": {"x": [0, 0.48]},
-        "name": "Gauge",
-        "hole": .3,
-        "type": "pie",
-        "direction": "clockwise",
-        "rotation": 90,
-        "showlegend": False,
-        "textinfo": "label",
-        "textposition": "inside",
-        "hoverinfo": "none"
+        'subjectivity': {
+            'value': subjectivity,
+            'x': [.52, 1.0],
+            'guage_labels': ["-", "0", "0.5", "1"],
+            'angle': -80.0 * ((subjectivity * 2) - 1),
+            'color_labels': ['Subjectivity', 'Very Objective', 'Neutral',
+                             'Very Subjective'],
+            'colors': [
+                'rgb(255, 255, 255)', # Black
+                'rgb(178, 255, 102)', # Light Green
+                'rgb(192, 192, 192)', # Grey
+                'rgb(255, 102, 102)' # Light Red
+            ]
+        }
     }
-
-    # Create dial for guage
-
-    # -- Rotate dial appropriately --
-    def rotate_point(point, angle, center_point=(0, 0)):
-        """Rotates a point around center_point(origin by default)
-        Angle is in degrees.
-        Rotation is counter-clockwise
-        """
-        angle_rad = np.radians(angle % 360)
-        # Shift the point so that center_point becomes the origin
-        new_point = (point[0] - center_point[0], point[1] - center_point[1])
-        new_point = (
-            new_point[0] * np.cos(angle_rad) - new_point[1] * np.sin(angle_rad),
-            new_point[0] * np.sin(angle_rad) + new_point[1] * np.cos(angle_rad))
-        # Reverse the shifting we have done
-        new_point = (
-            new_point[0] + center_point[0], new_point[1] + center_point[1])
-
-        return new_point
-
-    # Initialize coordinates
-    coords = np.array([
-        [0.235, 0.5],
-        [0.24, 0.65],
-        [0.245, 0.5]])
-    # Get centeroid
-    #centeroid = coords.mean(axis=0)
-    pivot = [0.24, 0.5]
-    # Rotate dial about centeroid
-    angle = -80 * polarity
-
-    new_coords = np.array([
-        rotate_point(coord, angle, center_point=pivot) for coord in coords])
-
+    # --- Initialize Layout ---
     layout = {
         'xaxis': {
             'showticklabels': False,
             'showgrid': False,
-            'zeroline': False,
+            'zeroline': False
         },
         'yaxis': {
             'showticklabels': False,
             'showgrid': False,
-            'zeroline': False,
+            'zeroline': False
         },
-        'shapes': [
-            {
-                'type': 'path',
-                'path': 'M {} {} L {} {} L {} {} Z'.format(*new_coords.flatten()),
-                'fillcolor': 'rgba(44, 160, 101, 0.5)',
-                'line': {
-                    'width': 0.5
-                },
-                'xref': 'paper',
-                'yref': 'paper'
-            }
-        ],
-        'annotations': [
-            {
-                'xref': 'paper',
-                'yref': 'paper',
-                'x': 0.23,
-                'y': 0.45,
-                'text': str(np.round(polarity, 3)),
-                'showarrow': False
-            }
-        ]
+        'shapes': [],
+        'annotations': []
     }
+    # Initialize data list
+    data = []
+    # Iterate over guage data and create each guage
+    for key, values in guage_data.items():
+        base_chart = {
+            "values": [40, 20, 20, 20],
+            "labels": values['guage_labels'],
+            "domain": {'x': values['x']},
+            "marker": {
+                "colors": values['colors'],
+                "line": {"width": 0}
+            },
+            "name": "Gauge",
+            "hole": .4,
+            "type": "pie",
+            "direction": "clockwise",
+            "rotation": 108,
+            "showlegend": False,
+            "hoverinfo": "none",
+            "textinfo": "label",
+            "textposition": "outside"
+        }
 
+        pos_fraction = 50 / 3
+
+        meter_chart = {
+            "values": [50, pos_fraction, pos_fraction, pos_fraction],
+            "labels": values['color_labels'],
+            "marker": {'colors': values['colors']},
+            "domain": {"x": values['x']},
+            "name": "Gauge",
+            "hole": .3,
+            "type": "pie",
+            "direction": "clockwise",
+            "rotation": 90,
+            "showlegend": False,
+            "textinfo": "label",
+            "textposition": "inside",
+            "hoverinfo": "none"
+        }
+
+        # Initialize coordinates
+        coords = np.array([
+            [values['x'][0] + 0.235, 0.5],
+            [values['x'][0] + 0.24, 0.65],
+            [values['x'][0] + 0.245, 0.5]])
+        pivot = [values['x'][0] + 0.24, 0.5]
+        # Rotate dial about centeroid
+        new_coords = np.array([
+            _rotate_point(coord, values['angle'], center_point=pivot)
+            for coord in coords])
+        # Create shape
+        shape = {
+            'type': 'path',
+            'path': 'M {} {} L {} {} L {} {} Z'.format(*new_coords.flatten()),
+            'fillcolor': 'rgba(44, 160, 101, 0.5)', # Fill triangle green
+            'line': {'width': 0.5},
+            'xref': 'paper',
+            'yref': 'paper'
+        }
+        # Create annotations
+        annotation = {
+            'xref': 'paper',
+            'yref': 'paper',
+            'x': (values['x'][0] + values['x'][1]) / 2,
+            'y': 0.45,
+            'text': str(np.round(values['value'], 3)),
+            'showarrow': False
+        }
+        # Add objects to layout and data
+        layout['shapes'].append(shape)
+        layout['annotations'].append(annotation)
+        data.append(base_chart)
+        data.append(meter_chart)
     # we don't want the boundary now
     base_chart['marker']['line']['width'] = 0
-
-    fig = {"data": [base_chart, meter_chart],
-           "layout": layout}
+    # Create figure dict
+    fig = {"data": data, "layout": layout}
 
     return fig
 

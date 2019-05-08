@@ -8,13 +8,14 @@ import plotly.graph_objs as go
 import plotly.figure_factory as ff
 
 
-def create_pie_chart(tweet_word_count, reply_word_count, n=10):
+def create_pie_chart(word_count_1, word_count_2, name_1='Tweet', 
+                     name_2='Replies', n=10):
     """
         This method will create two pie charts displaying word frequencies.
 
         Args:
-            tweet_word_count (pandas.DataFrame): word count of top tweets
-            reply_word_count (pandas.DataFrame): word count of replies
+            word_count_1 (pandas.DataFrame): word count of top tweets
+            word_count_2 (pandas.DataFrame): word count of replies
 
         Returns:
             figure dict object formatted for plotly
@@ -23,20 +24,20 @@ def create_pie_chart(tweet_word_count, reply_word_count, n=10):
     fig = {
       "data": [
         {
-          "values": tweet_word_count['count'].values[:n],
-          "labels": tweet_word_count['word'].values[:n],
+          "values": word_count_1['count'].values[:n],
+          "labels": word_count_1['word'].values[:n],
           "domain": {"column": 0},
           "hole": .4,
           "type": "pie",
-          "name": "Tweets"
+          "name": name_1
         },
         {
-          "values": reply_word_count['count'].values[:n],
-          "labels": reply_word_count['word'].values[:n],
+          "values": word_count_2['count'].values[:n],
+          "labels": word_count_2['word'].values[:n],
           "domain": {"column": 1},
           "hole": .4,
           "type": "pie",
-          "name": "Replies"
+          "name": name_2
         }],
       "layout": {
             "title":"Word Frequency",
@@ -47,7 +48,7 @@ def create_pie_chart(tweet_word_count, reply_word_count, n=10):
                         "size": 20
                     },
                     "showarrow": False,
-                    "text": "Tweets",
+                    "text": name_1,
                     "x": 0.20,
                     "y": 0.5
                 },
@@ -56,7 +57,7 @@ def create_pie_chart(tweet_word_count, reply_word_count, n=10):
                         "size": 20
                     },
                     "showarrow": False,
-                    "text": "Replies",
+                    "text": name_2,
                     "x": 0.8,
                     "y": 0.5
                 }
@@ -227,7 +228,8 @@ def create_sentiment_gauge(blob):
     return fig
 
 
-def create_boxplot(tweet_df):
+def create_boxplot(tweet_df, columns=['retweets', 'favorites'],
+                   title='Retweets and Favorites'):
     """
         This method will create boxplots for retweets and favorites.
 
@@ -237,29 +239,19 @@ def create_boxplot(tweet_df):
         Returns:
             figure dict object formatted for plotly
     """
-    # Setup values boxplots will be created for
-    columns = {
-        'retweets': 'rgba(255, 65, 54, 0.5)',  # Orange
-        'favorites': 'rgba(93, 164, 214, 0.5)'  # Blue
-    }
     # Build trace objects
     traces = []
-    for key, value in columns.items():
+    for header in columns:
         traces.append(go.Box(
-            x=tweet_df[key].values,
-            name=key,
+            x=tweet_df[header].values,
+            name=header,
             boxpoints='all',
             jitter=0.5,
             whiskerwidth=0.2,
-            fillcolor=value,
-            marker=dict(
-                size=2,
-                color=value
-            ),
             line=dict(width=1),
         ))
     # Build layout
-    layout = go.Layout(title='Retweets and Favorites')
+    layout = go.Layout(title=title)
 
     fig = {'data': traces, 'layout': layout}
 
@@ -284,5 +276,118 @@ def create_distplot(tweet_df, headers=['net_influence'],
     hist_data = [tweet_df[header].values for header in headers]
     # Create figure
     fig = ff.create_distplot(hist_data, headers, bin_size=bin_sizes)
+
+    return fig
+
+
+def create_user_description_scatter(user_word_count, n=15):
+    """
+        This method will create the user description word count scatter
+        plot.  This plot will give insight into the backround of the
+        profiles whom have the recent top tweets.
+
+        Args:
+            user_word_count (pandas.DataFrame): user description word counts
+            n (int): number of words that will be shown on plot
+
+        Returns:
+            figure dict object formatted for plotly
+    """
+
+    data = []
+    # Iterate over top n words and plot each
+    for index, row in user_word_count.head(n).iterrows():
+        trace = go.Scatter(
+            x=[row['count']],
+            y=[row['avg_net_influence']],
+            name=row['word'],
+            # Scale the size of the point by the count of words
+            marker= {
+                'size': row['count'] * 3,
+                },
+            mode='markers'
+            )
+        data.append(trace)
+    # Create layout
+    layout = {
+        'title': 'User Description Scatter',
+        'xaxis': {'title': 'Count', 'zeroline': False},
+        'yaxis': {'title': 'Average Net Influence', 'zeroline': False}
+        }
+
+    fig = {'data': data, 'layout': layout}
+
+    return fig
+
+
+def create_2d_histogram(df, xaxis, yaxis, title):
+    """
+        This method will create a 2d histogram (heatmap)
+
+        Args:
+            df (pandas.DataFrame): data that will be displayed
+            xaxis (str): x axis header
+            yaxis (str): y axis header
+            title (str): plot title
+
+        Returns:
+            figure dict object formatted for plotly
+    """
+    # Create data
+    data = [
+        go.Histogram2d(
+           x=df[xaxis],
+           y=df[yaxis]
+        )
+    ]
+    # Create layout
+    layout = {
+        'title': title,
+        'xaxis': {'title': xaxis},
+        'yaxis': {'title': yaxis}
+    }
+
+    fig = {'data': data, 'layout': layout}
+
+    return fig
+
+
+def create_violin_plot(df, columns, title):
+    """
+        This method will create violin plots given a DataFrame and columns.
+
+        Args:
+            df (pandas.DataFrame): data that will be displayed
+            columns (list): list of columns
+            title (str): violin plot title
+
+        Returns:
+            figure dict object formatted for plotly
+    """
+    # Create trace data
+    data = []
+    for c in columns:
+        data.append(
+            {
+                "type": 'violin',
+                "y": df[c],
+                #"line": {"color": 'black'},
+                "box": {"visible": True},
+                "meanline": {"visible": True},
+                #"fillcolor": '#8dd3c7',
+                "opacity": 0.6,
+                "name": c,
+                "points": 'all',
+                "jitter": 0
+            }
+        )
+    # Create layout
+    layout = {
+        "title": title,
+        "yaxis": {"zeroline": False}
+    }
+
+    fig = {'data': data, 'layout': layout}
+
 
     return fig

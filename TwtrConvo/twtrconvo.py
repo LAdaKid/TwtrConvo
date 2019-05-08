@@ -11,45 +11,63 @@ import os
 import sys
 import argparse
 import pandas as pd
+import numpy as np
 import json
 import re
 from textblob import TextBlob
 from nltk.corpus import stopwords
 # local imports
-from .tweets import get_tweets, get_replies
+from .tweets import get_tweets
 from .plots import (
     create_pie_chart, create_sentiment_gauge, create_boxplot,
-    create_distplot
+    create_distplot, create_user_description_scatter, create_2d_histogram,
+    create_violin_plot
 )
 
 
-def convert_tweets_to_df(tweet_list):
+def convert_tweets_to_df(tweet_list, replies=False):
     """
         This method will cast the list of tweets to a DataFrame
 
         Args:
             tweet_list (list): list of tweets
+            replies (bool): whether or not df is replies
 
         Returns:
             pandas.DataFrame of tweets with various fields
     """
-    columns = ['id', 'username', 'tweet', 'text', 'favorites', 'retweets',
-               'followers', 'following']
+    columns = ['id', 'username', 'user_id','tweet', 'text', 'favorites', 'retweets',
+               'followers', 'following', 'polarity', 'subjectivity']
+    if replies:
+        columns += ['reply_id']
     df = pd.DataFrame(
         index=range(len(tweet_list)),
         columns=columns)
     index = 0
     for tweet in tweet_list:
-        df.loc[index, columns] = [
+        cleaned_text = clean_text(tweet['full_text'])
+        # Create TextBlob to get sentiment results
+        blob = TextBlob(cleaned_text)
+        # Build row
+        values = [
             tweet['id'],
             tweet['user']['screen_name'],
+            tweet['user']['id'],
             tweet['full_text'],
-            clean_tweet(tweet['full_text']),
+            cleaned_text,
             tweet['favorite_count'],
             tweet['retweet_count'],
             tweet['user']['followers_count'],
-            tweet['user']['friends_count']
+            tweet['user']['friends_count'],
+            blob.sentiment.polarity,
+            blob.sentiment.subjectivity
         ]
+        # If replies==True, include foreign key
+        if replies:
+            values.append(
+                tweet['in_reply_to_status_id'])
+
+        df.loc[index, columns] = values
         index += 1
     # Create column for net influence
     df['net_influence'] = df['followers'] - df['following']
@@ -59,7 +77,7 @@ def convert_tweets_to_df(tweet_list):
     return df
 
 
-def clean_tweet(tweet):
+def clean_text(tweet):
     """
         Utility function to clean tweet text by removing links, special
         characters  and other unwanted characters using a simple regex.
@@ -74,7 +92,7 @@ def clean_tweet(tweet):
     return ' '.join(re.sub(regx, " ", tweet).split()) 
 
 
-def rank_tweets(tweet_df, n=50):
+def rank_tweets(tweet_df, n=200):
     """
         Get top n ranked tweets based on net influence (net followers),
         retweets, and favorites.
@@ -98,34 +116,41 @@ def rank_tweets(tweet_df, n=50):
     return tweet_df.head(n)
 
 
-def get_reply_df(tweet_df):
+def get_user_info_df(tweet_list, ids=[]):
     """
-        Get replies to top ranked tweets.
+        This method will organize user data from a list of a tweets into a
+        DataFrame.
 
         Args:
-            tweet_df (pandas.DataFrame): tweet table
+            tweet_list (list): list of tweets
+            ids (list): list of user ids to filter by
 
         Returns:
-            table of replies with foreign key columns linking to ranked tweets
+            user information DataFrame
     """
-    reply_df = pd.DataFrame()
+    # Cast user data to DataFrame
+    user_df = pd.DataFrame(
+        {i['user']['screen_name']: {
+            'user_id': i['user']['id'],
+            'full_description': i['user']['description'],
+            'followers': i['user']['followers_count'],
+            'following': i['user']['friends_count'],
+            'favorites': i['user']['favourites_count'],
+            'tweet_count': i['user']['statuses_count']
+            } for i in tweet_list}).T.reset_index()
+    user_df.rename(columns={'index': 'username'}, inplace=True)
+    # Clean full descriptions
+    user_df['description'] = [
+        clean_text(d) for d in user_df['full_description']]
+    user_df['net_influence'] = user_df['followers'] - user_df['following']
+    # If list of ids are passed in, filter by this list
+    if ids:
+        user_df = user_df.loc[user_df['user_id'].isin(ids)]
 
-    for index, row in tweet_df.iterrows():
-        tweet_id = row['id']
-        username = row['username']
-        # Get replies
-        replies = get_replies(tweet_id, username)
-        # Create replies df
-        replies_df = convert_tweets_to_df(replies)
-        # Add original tweet id as foreign key
-        replies_df['reply_id'] = tweet_id
-        # Concat on existing data
-        reply_df = pd.concat([reply_df, replies_df], ignore_index=True)
-
-    return reply_df
+    return user_df
 
 
-def build_dataset(ticker, save=False):
+def build_dataset(ticker, data_path=''):
     """
         This method will build a dataset for a given ticker.
 
@@ -137,21 +162,28 @@ def build_dataset(ticker, save=False):
             tweet and reply DataFrames
     """
     # Get tweets (returns latest tweets in dict)
-    tweet_list = get_tweets(ticker)
+    tweet_list, reply_list = get_tweets(ticker)
     # --- Metrics for tweet ranking ---
     tweet_df = convert_tweets_to_df(tweet_list)
+    reply_df = convert_tweets_to_df(reply_list, replies=True)
     # Only get highest ranked tweets
     tweet_df = rank_tweets(tweet_df)
-    # Get replies to ranked tweets
-    reply_df = get_reply_df(tweet_df)
-    # Save tweets
-    if save:
-        tweet_df.to_csv(os.path.join('datasets', ticker, 'tweets.csv'),
+    # Get replies to top tweets
+    reply_df = reply_df.loc[
+        reply_df['reply_id'].isin(tweet_df['id'].values)]
+    # Get user information
+    user_df = get_user_info_df(
+        tweet_list, ids=list(tweet_df['user_id'].unique()))
+    # Save tweets, replies, and user information
+    if data_path:
+        tweet_df.to_csv(os.path.join(data_path, 'tweets.csv'),
                         index=False)
-        reply_df.to_csv(os.path.join('datasets', ticker, 'replies.csv'),
+        reply_df.to_csv(os.path.join(data_path, 'replies.csv'),
                         index=False)
+        user_df.to_csv(os.path.join(data_path, 'users.csv'),
+                       index=False)
 
-    return tweet_df, reply_df
+    return tweet_df, reply_df, user_df
 
 
 def load_dataset(data_path):
@@ -171,24 +203,27 @@ def load_dataset(data_path):
                            na_filter=False)
     reply_df = pd.read_csv(os.path.join(data_path, 'replies.csv'),
                            na_filter=False)
+    user_df = pd.read_csv(os.path.join(data_path, 'users.csv'),
+                          na_filter=False)
 
-    return tweet_df, reply_df
+    return tweet_df, reply_df, user_df
 
 
-def get_blob(ticker, tweet_df):
+def get_blob(ticker, df, header='text'):
     """
         This method will take a DataFrame of tweets and turn all the text into
         a single TextBlob.
 
         Args:
             ticker (str): ticker symbol
-            tweet_df (pandas.DataFrame): tweets
+            df (pandas.DataFrame): data with text
+            header (str): header of text column
 
         Returns:
             textblob.TextBlob object of all text from tweets
     """
     # Create initial blob
-    blob = TextBlob(' '.join(tweet_df['text'].values).lower())
+    blob = TextBlob(' '.join(df[header].values).lower())
     # Filter by stopwords
     filtered_words = [
         word for word in blob.words
@@ -201,24 +236,31 @@ def get_blob(ticker, tweet_df):
     return blob
 
 
-def get_word_count(blob):
+def get_word_count(blob, n=1):
     """
         This method will build a word count DataFrame given a text blob.
-        TODO: Make all words singular
-        TODO: Add n-grams (likely n=2)
 
         Args:
             blob (textblob.TextBlob): blob of all words from tweets
+            n (int): number of ngrams
 
         Returns:
             word count pandas.DataFrame
     """
     # Get the count of each words
-    count_dict = {word: blob.words.count(word) for word in blob.words}
+    count_dict = {}
+    for ngram in blob.ngrams(n=n):
+        term = ' '.join(ngram)
+        if term in count_dict:
+            count_dict[term] += 1
+        else:
+            count_dict[term] = 1
     # Cast to DataFrame
     word_count = pd.DataFrame(
         data=list(count_dict.items()),
         columns=['word', 'count']).sort_values('count', ascending=False)
+    # Reset index of word count df
+    word_count = word_count.reset_index(drop=True)
 
     return word_count
 
@@ -246,6 +288,23 @@ def save_figures(html_path, figures):
     return
 
 
+def add_user_data(user_word_count, user_df):
+    """
+        This method will add data to the word count DataFrame.
+    """
+
+    # Add avg net influence of users with each word in their description
+    user_word_count['avg_net_influence'] = np.nan
+
+    for index, row in user_word_count.iterrows():
+        word_in_description = user_df['description'].apply(
+            lambda x: row['word'] in x.lower())
+        user_word_count.loc[index, 'avg_net_influence'] = user_df.loc[
+            word_in_description, 'net_influence'].mean()
+
+    return user_word_count
+
+
 def main(ticker, build):
     """
         This method will drive the primary functionality of the package.
@@ -265,16 +324,22 @@ def main(ticker, build):
         if not os.path.exists(data_path):
             os.makedirs(data_path)
         # Build dataset
-        tweet_df, reply_df = build_dataset(ticker, save=True)
+        tweet_df, reply_df, user_df = build_dataset(
+            ticker, data_path=data_path)
     # Otherwise, load previously collected tweets
     else:
         # Load dataset
-        tweet_df, reply_df = load_dataset(data_path)
+        tweet_df, reply_df, user_df = load_dataset(data_path)
     # Get text blobs and word count
     tweet_blob = get_blob(ticker, tweet_df)
     tweet_word_count = get_word_count(tweet_blob)
+    tweet_bigram_count = get_word_count(tweet_blob, n=2)
+    tweet_trigram_count = get_word_count(tweet_blob, n=3)
     reply_blob = get_blob(ticker, reply_df)
     reply_word_count = get_word_count(reply_blob)
+    user_blob = get_blob(ticker, user_df, header='description')
+    user_word_count = get_word_count(user_blob)
+    user_word_count = add_user_data(user_word_count, user_df)
     # --- Create plotly HTML files ---
     # Initialize html directory
     html_path = os.path.join(data_path, 'html')
@@ -282,10 +347,23 @@ def main(ticker, build):
         os.makedirs(html_path)
     # -- Create Figures --
     figures = {}
-    figures['pie_chart'] = create_pie_chart(tweet_word_count, reply_word_count)
+    figures['word_count_pie_chart'] = create_pie_chart(
+        tweet_word_count, reply_word_count)
+    figures['ngram_count_pie_chart'] = create_pie_chart(
+        tweet_bigram_count, tweet_trigram_count, name_1='bigrams',
+        name_2='trigrams')
     figures['sentiment_guage'] = create_sentiment_gauge(tweet_blob)
-    figures['boxplots'] = create_boxplot(tweet_df)
-    figures['distplot'] = create_distplot(tweet_df)
+    figures['retweets_favs_boxplots'] = create_boxplot(tweet_df)
+    figures['sentiment_boxplots'] = create_boxplot(
+        tweet_df, columns=['polarity', 'subjectivity'], title='Sentiment')
+    figures['sentiment_violin_plot'] = create_violin_plot(
+        tweet_df, ['polarity', 'subjectivity'], 'Sentiment Violin Plot')
+    figures['user_influence_distplot'] = create_distplot(user_df)
+    figures['user_description_scatter'] = create_user_description_scatter(
+        user_word_count)
+    figures['user_activity_heatmap'] = create_2d_histogram(
+        user_df, 'net_influence', 'tweet_count',
+        'User Activity vs. Influence')
     # -- Save figures as html files --
     save_figures(html_path, figures)
 

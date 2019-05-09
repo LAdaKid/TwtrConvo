@@ -16,12 +16,13 @@ import json
 import re
 from textblob import TextBlob
 from nltk.corpus import stopwords
+from sklearn import preprocessing as sk 
 # local imports
 from .tweets import get_tweets
 from .plots import (
     create_pie_chart, create_sentiment_gauge, create_boxplot,
     create_distplot, create_user_description_scatter, create_2d_histogram,
-    create_violin_plot
+    create_violin_plot, create_contour
 )
 
 
@@ -92,7 +93,7 @@ def clean_text(tweet):
     return ' '.join(re.sub(regx, " ", tweet).split()) 
 
 
-def rank_tweets(tweet_df, n=200):
+def rank_tweets(tweet_df, n=100):
     """
         Get top n ranked tweets based on net influence (net followers),
         retweets, and favorites.
@@ -105,7 +106,6 @@ def rank_tweets(tweet_df, n=200):
         Returns:
             n top ranked tweets
     """
-
     cols = ['net_influence', 'retweets', 'favorites']
     ranked_cols = {c: c + 'rank' for c in cols}
     ranks = tweet_df[cols].rank().rename(columns=ranked_cols)
@@ -265,6 +265,33 @@ def get_word_count(blob, n=1):
     return word_count
 
 
+def get_weighted_sentiment(df, weights=[1 / 3] * 3):
+    """
+        This method will calculate a weighted sentiment based on tweets meta
+        data and their provided weights.
+
+        Args:
+            df (pandas.DataFrame): tweets
+            weights (list): list of weights corresponding to meta data
+
+        Returns:
+            weighted sentiment
+    """
+    sentiment = np.array([0.0, 0.0])
+    sentiment_keys = ['polarity', 'subjectivity']
+    headers = ['retweets', 'favorites', 'net_influence']
+    for i in range(2):
+        value = sentiment_keys[i]
+        for j in range(3):
+            h = headers[j]
+            scaled_value = np.average(df[value], weights=df[h])
+            sentiment[i] += weights[j] * scaled_value
+
+    sentiment = sentiment / 3
+
+    return sentiment
+
+
 def save_figures(html_path, figures):
     """
         This method will save the figures to interactive html files using
@@ -340,6 +367,7 @@ def main(ticker, build):
     user_blob = get_blob(ticker, user_df, header='description')
     user_word_count = get_word_count(user_blob)
     user_word_count = add_user_data(user_word_count, user_df)
+    weighted_sentiment = get_weighted_sentiment(tweet_df)
     # --- Create plotly HTML files ---
     # Initialize html directory
     html_path = os.path.join(data_path, 'html')
@@ -352,7 +380,10 @@ def main(ticker, build):
     figures['ngram_count_pie_chart'] = create_pie_chart(
         tweet_bigram_count, tweet_trigram_count, name_1='bigrams',
         name_2='trigrams')
-    figures['sentiment_guage'] = create_sentiment_gauge(tweet_blob)
+    figures['sentiment_guage'] = create_sentiment_gauge(
+        tweet_blob.sentiment.polarity, tweet_blob.sentiment.subjectivity)
+    figures['weighted_sentiment_guage'] = create_sentiment_gauge(
+        weighted_sentiment[0], weighted_sentiment[1])
     figures['retweets_favs_boxplots'] = create_boxplot(tweet_df)
     figures['sentiment_boxplots'] = create_boxplot(
         tweet_df, columns=['polarity', 'subjectivity'], title='Sentiment')
@@ -364,6 +395,7 @@ def main(ticker, build):
     figures['user_activity_heatmap'] = create_2d_histogram(
         user_df, 'net_influence', 'tweet_count',
         'User Activity vs. Influence')
+    figures['retweets_polarity_contour'] = create_contour(tweet_df)
     # -- Save figures as html files --
     save_figures(html_path, figures)
 

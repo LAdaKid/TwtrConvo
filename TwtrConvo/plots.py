@@ -4,6 +4,7 @@ This module will create the different plotly objects.
 
 import os
 import numpy as np
+from plotly import tools
 import plotly.graph_objs as go
 import plotly.figure_factory as ff
 
@@ -86,7 +87,7 @@ def _rotate_point(point, angle, center_point=(0, 0)):
     return new_point
 
 
-def create_sentiment_gauge(blob):
+def create_sentiment_gauge(polarity, subjectivity):
     """
         This method will create a plotly formatted dict which will be displayed
         as a guage, and will show the general sentiment of the text from all
@@ -99,8 +100,6 @@ def create_sentiment_gauge(blob):
         Returns:
             figure dict object formatted for plotly
     """
-    polarity = blob.sentiment.polarity
-    subjectivity = blob.sentiment.subjectivity
     # --- Initialize Gauge Chart Metrics ---
     guage_data = {
         'polarity': {
@@ -389,5 +388,124 @@ def create_violin_plot(df, columns, title):
 
     fig = {'data': data, 'layout': layout}
 
+
+    return fig
+
+
+def create_contour(
+    df, title='Retweets vs. Polarity', yaxis='polarity',
+    xaxes=['retweets'], colors=['Blues'],
+    domains=[[[.0, .85], [.0, .85], [.85, 1.0], [.85, 1.0]]]):
+    """
+        This method will create contour plots for given groups of paired data.
+
+        TODO: Figure out how to get multiple plots to work
+        #colors = ['Blues', 'Reds', 'Greens']
+        #domains = [
+        #    [[.0, .45], [.5, .95], [.45, 0.5], [.95, 1.0]],
+        #    [[.5, .95], [.5, .95], [.95, 1.0], [.95, 1.0]],
+        #    [[.0, .95], [.0, .45], [.95, 1.0], [.45, 0.5]]
+        #]
+
+        Args:
+            df (pandas.DataFrame): data
+            yaxis (str): yaxis value
+            xaxis (list): xaxis values
+            domains (list): list of domain values for each trace
+            colors (list): list of color scales
+
+        Returns:
+            figure dict object formatted for plotly
+    """
+    # Initialize data and layout lists
+    data = []
+    layout = {
+        'showlegend': False,
+        'title': title,
+        'bargap': 0,
+        'hovermode': 'closest'}
+    for i in range(len(xaxes)):
+        if i == 0:
+            axis1_args = {
+                'xaxis': {
+                    'trace': 'x',
+                    'layout': 'xaxis'
+                },
+                'yaxis': {
+                    'trace': 'y',
+                    'layout': 'yaxis'
+                }
+            }
+        else:
+            axis1_args = {
+                'xaxis': {
+                    'trace': 'x' + str(i*2+1),
+                    'layout': 'xaxis' + str(i*2+1)
+                },
+                'yaxis': {
+                    'trace': 'y' + str(i*2+1),
+                    'layout': 'yaxis' + str(i*2+1)
+                }
+            }
+        axis2_args = {
+            'xaxis': {
+                'trace': 'x' + str(i*2+2),
+                'layout': 'xaxis' + str(i*2+2)
+            },
+            'yaxis': {
+                'trace': 'y' + str(i*2+2),
+                'layout': 'yaxis' + str(i*2+2)
+            }
+        }
+        # Append trace values
+        data.append(
+            go.Histogram2dContour(
+                x=df[xaxes[i]],
+                y=df[yaxis],
+                xaxis=axis1_args['xaxis']['trace'],
+                yaxis=axis1_args['yaxis']['trace'],
+                colorscale=colors[i],
+                reversescale = True
+            )
+        )
+        data.append(
+            go.Histogram(
+                y=df[yaxis],
+                xaxis=axis2_args['xaxis']['trace'],
+                marker = {'color': 'rgba(0,0,0,1)'}
+            )
+        )
+        data.append(
+            go.Histogram(
+                x=df[xaxes[i]],
+                yaxis=axis2_args['yaxis']['trace'],
+                marker = {'color': 'rgba(0,0,0,1)'}
+            )
+        )
+        # Add layout keys
+        layout[axis1_args['xaxis']['layout']] = dict(
+            zeroline = False,
+            domain = domains[i][0],
+            showgrid = False,
+            title=xaxes[i]
+        )
+        layout[axis1_args['yaxis']['layout']] = dict(
+            zeroline = False,
+            domain = domains[i][1],
+            showgrid = False,
+            title=yaxis
+        )
+        layout[axis2_args['xaxis']['layout']] = dict(
+            zeroline = False,
+            domain = domains[i][2],
+            showgrid = False,
+        )
+        layout[axis2_args['yaxis']['layout']] = dict(
+            zeroline = False,
+            domain = domains[i][3],
+            showgrid = False,
+        )
+
+    fig = {'data': data, 'layout': layout}
 
     return fig
